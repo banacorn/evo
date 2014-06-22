@@ -25,7 +25,7 @@ instance (MonadBaseControl IO) EvoM where
 data Rule cond action reward = Rule [cond] action reward
 
 instance (Show c, Show a, Show r) => Show (Rule c a r) where
-    show (Rule cond action reward) = cond' ++ "|" ++ action' ++ ":" ++ reward'
+    show (Rule cond action reward) = "< " ++ cond' ++ " : " ++ action' ++ " -> " ++ reward' ++ " >"
         where   cond' = concat (map show cond)
                 action' = show action
                 reward' = show reward
