@@ -22,15 +22,30 @@ instance (MonadBaseControl IO) EvoM where
 
 
 -- LCS
-data Rule cond action reward = Rule [cond] action reward
+data Rule cond action = Rule
+    {   condition :: [cond]
+    ,   action :: action
+    ,   prediction :: Double
+    ,   error :: Double
+    ,   fitness :: Double
+    }
 
-instance (Show c, Show a, Show r) => Show (Rule c a r) where
-    show (Rule cond action reward) = "< " ++ cond' ++ " : " ++ action' ++ " -> " ++ reward' ++ " >"
-        where   cond' = concat (map show cond)
-                action' = show action
-                reward' = show reward
+instance (Show c, Show a) => Show (Rule c a) where
+    show (Rule cond action prediction error fitness) = "< " ++ concat (map show cond) 
+        ++ " : " ++ show action 
+        ++ " | " ++ show prediction 
+        ++ " " ++ show error
+        ++ " " ++ show fitness
+        ++ " >"
 
 data Bit = On | Off | DontCare deriving Enum
+
+instance Eq Bit where
+    On == Off = False
+    On == _ = True
+    Off == On = False
+    Off == _ = True
+    DontCare == _ = True
 
 instance Show Bit where
     show On = "0"
@@ -41,4 +56,4 @@ instance Variate Bit where
     uniform gen = uniform gen >>= return . toEnum . flip mod 3
     uniformR (a, b) gen = uniformR (fromEnum a, fromEnum b) gen >>= return . toEnum
 
-type Vanilla = Rule Bit Bool Int
+type Vanilla = Rule Bit Bool

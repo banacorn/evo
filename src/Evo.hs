@@ -13,9 +13,6 @@ import Control.Monad.State
 -- 2. group the matched set by actions [A]
 -- 3. 
 
---initPopulation :: IO [Rule]
---initPopulation = do
-
 getGen :: EvoM GenIO
 getGen = get >>= liftIO . restore
 
@@ -34,7 +31,7 @@ genRule = do
     cond <- liftIO $ uniform gen
     action <- liftIO $ uniform gen
     putGen gen
-    return $ Rule [cond] action 100
+    return $ Rule [cond] action 100 0 1
 
 initPopulation :: Int -> EvoM [Vanilla]
 initPopulation n = replicateM n genRule
