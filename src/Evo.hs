@@ -5,13 +5,32 @@ import Evo.Types
 import System.Random.MWC
 
 import Control.Monad
+import Control.Monad.State
+
+--initPopulation :: IO [Rule]
+--initPopulation = do
+
+
+
+genRule :: EvoM Vanilla
+genRule = do
+
+    gen <- get >>= liftIO . restore
+
+    cond <- replicateM 10 (liftIO $ uniform gen)
+    action <- liftIO $ uniform gen
+    liftIO (save gen) >>= put
+
+    return $ Rule cond action 100
+
+
+--printSeed gen = save gen >>= print
 
 main = do
+    seed <- create >>= save
 
-
-
-    gen <- create
-
-    v <- replicateM 100 (uniformR (Off, DontCare) gen) :: IO [Bit]
-
-    print v
+    flip evalStateT seed $ runEvoM $ do
+        genRule >>= liftIO . print
+        genRule >>= liftIO . print
+        genRule >>= liftIO . print
+        genRule >>= liftIO . print
