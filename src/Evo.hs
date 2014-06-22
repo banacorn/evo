@@ -6,7 +6,7 @@ import System.Random.MWC
 
 import Control.Monad
 import Control.Monad.State
-
+import Control.Monad.Reader
 
 -- LCS
 -- 1. find the matched set [M]
@@ -25,19 +25,49 @@ putGen gen = liftIO (save gen) >>= put
 --    n <- liftIO $ uniform gen
 
 
-genRule :: EvoM Vanilla
+genRule :: (Condition c, Action a) => EvoM (Rule c a)
 genRule = do
     gen <- getGen
     cond <- liftIO $ uniform gen
     action <- liftIO $ uniform gen
     putGen gen
-    return $ Rule [cond] action 100 0 1
+    return (Rule [cond] action 100 0 100)
 
-initPopulation :: Int -> EvoM [Vanilla]
+
+match :: Condition c => [c] -> [Rule c a] -> [Rule c a]
+match cond = filter ((== cond) . condition)
+
+groupByAction :: Action a => [Rule c a] -> [[Rule c a]]
+groupByAction rules = map (\a -> filter ((== a) . action) rules) allActions
+    where   allActions = [minBound .. maxBound]
+
+predictPayoff :: [Rule c a] -> Double
+predictPayoff rules = sum (map weightedPayoff rules) / sumOfFitness
+    where   sumOfFitness = sum (map fitness rules)
+            weightedPayoff rule = payoff rule * fitness rule
+
+initPopulation :: (Condition c, Action a) => Int -> EvoM [Rule c a]
 initPopulation n = replicateM n genRule
 
+runner :: EvoM ()
+runner = do
+    p <- initPopulation 100 :: EvoM [Vanilla]
+    liftIO $ print . predictPayoff . head . groupByAction $ match [On] p
+
+
+parameter :: Parameter
+parameter = Parameter
+    {   populationSize = 1000 
+    ,   learningRate = 0.2
+    ,   discountFactor = 0.7
+    ,   errorBound = 0.01
+    ,   falloffRate = 0.1
+    ,   initialPrediction = 10
+    ,   initialError = 0
+    ,   initialFitness = 10
+    }
+
+main :: IO ()
 main = do
     seed <- create >>= save
-    flip evalStateT seed $ runEvoM $ do
-        p <- initPopulation 100
-        liftIO $ print p
+    runReaderT (evalStateT (runEvoM runner) seed) parameter
