@@ -9,12 +9,11 @@ import System.Random.MWC
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Monad.Base
-import Control.Monad.Primitive (PrimState)
 import Control.Applicative (Applicative)
 import Control.Monad.Trans.Control
 
 newtype EvoM a = EvoM { runEvoM :: StateT Seed (ReaderT Parameter IO) a }
-    deriving (Monad, Functor, Applicative, MonadIO, MonadState Seed, MonadBase IO)
+    deriving (Monad, Functor, Applicative, MonadIO, MonadState Seed, MonadReader Parameter, MonadBase IO)
 
 instance (MonadBaseControl IO) EvoM where
     newtype StM EvoM a = StMEvo { unStMCEvo :: StM (StateT Seed (ReaderT Parameter IO)) a }
@@ -22,29 +21,32 @@ instance (MonadBaseControl IO) EvoM where
     restoreM = EvoM . restoreM . unStMCEvo
 
 data Parameter = Parameter
-    {   populationSize :: Int 
-    ,   learningRate :: Double
-    ,   discountFactor :: Double
-    ,   errorBound :: Double
-    ,   falloffRate :: Double
-    ,   initialPrediction :: Double
-    ,   initialError :: Double
-    ,   initialFitness :: Double
+    {   _populationSize :: Int 
+    ,   _learningRate :: Double
+    ,   _discountFactor :: Double
+    ,   _errorBound :: Double
+    ,   _falloffRate :: Double
+    ,   _initialPrediction :: Double
+    ,   _initialError :: Double
+    ,   _initialFitness :: Double
     }
 
+type MatchSet c a= [Rule c a]
+type ActionSet c a= [Rule c a]
+
 data Rule c a = Rule
-    {   condition :: [c]
-    ,   action :: a
-    ,   payoff :: Double
-    ,   error :: Double
-    ,   fitness :: Double
+    {   _condition :: [c]
+    ,   _action :: a
+    ,   _prediction :: Double
+    ,   _error :: Double
+    ,   _fitness :: Double
     }
 
 instance (Show c, Show a) => Show (Rule c a) where
-    show (Rule cond action payoff error fitness) = "< " ++ concat (map show cond) 
+    show (Rule cond action prediction err fitness) = "< " ++ concat (map show cond) 
         ++ " : " ++ show action 
-        ++ " = " ++ show payoff 
-        ++ " " ++ show error
+        ++ " = " ++ show prediction 
+        ++ " " ++ show err
         ++ " " ++ show fitness
         ++ " >"
 
