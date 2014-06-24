@@ -35,9 +35,15 @@ genRule = do
     putGen gen
     return (Rule [cond] action (_initialPrediction p) (_initialError p) (_initialFitness p))
 
+--------------------------------------------------------------------------------
+-- | Extract Action Set
 
-match :: Condition c => [c] -> [Rule c a] -> MatchSet c a
-match cond = filter ((== cond) . _condition)
+-- splits list into two parts by a predicate
+splitList :: (a -> Bool) -> [a] -> ([a], [a])
+splitList p = foldl (\(t, f) x -> if p x then (x:t, f) else (t, x:f)) ([], [])
+
+splitMatchSet :: Condition c => [c] -> [Rule c a] -> (MatchSet c a, [Rule c a])
+splitMatchSet cond = splitList ((== cond) . _condition)
 
 groupByAction :: Action a => MatchSet c a -> [ActionSet c a]
 groupByAction rules = map (\a -> filter ((== a) . _action) rules) allActions
@@ -48,12 +54,15 @@ actionPayoff rules = sum (map weightedPayoff rules) / sumOfFitness
     where   sumOfFitness = sum (map _fitness rules)
             weightedPayoff rule = _prediction rule * _fitness rule 
 
-chooseAction :: Action a => MatchSet c a -> ActionSet c a
-chooseAction matchSet = actionSets !! index
+splitActionSet :: Action a => MatchSet c a -> (ActionSet c a, [Rule c a])
+splitActionSet matchSet = (chosen, concat (unchosenLeft ++ unchosenRight))
     where   actionSets = groupByAction matchSet
             predictionArray = map actionPayoff actionSets
             index = head $ elemIndices (maximum predictionArray) predictionArray
 
+            unchosenLeft = take index actionSets
+            chosen = actionSets !! index
+            unchosenRight = tail $ drop index actionSets
 --------------------------------------------------------------------------------
 -- | Update Action Set
 {-
@@ -126,7 +135,19 @@ runner :: EvoM ()
 runner = do
     p <- ask
     population <- initPopulation 100 :: EvoM [Vanilla]
-    liftIO . print . chooseAction . match [On] $ population
+
+    let (matched, unmatched) = splitMatchSet [On] population
+    let (chosen, unchosen) = splitActionSet matched
+    liftIO $ do
+        putStrLn "unmatched"
+        print matched
+
+        putStrLn "matched yet unchosen"
+        print unchosen
+
+        putStrLn "matched and chosen"
+        print chosen
+
 
 
 parameter :: Parameter

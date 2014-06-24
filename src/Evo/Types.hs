@@ -53,7 +53,7 @@ instance (Show c, Show a) => Show (Rule c a) where
 class (Eq c, Enum c, Variate c) => Condition c where
 class (Eq a, Enum a, Variate a ,Bounded a) => Action a where
 
-data Bit = On | Off | DontCare deriving Enum
+data Bit = Off | On | DontCare deriving Enum
 
 instance Eq Bit where
     On == Off = False
