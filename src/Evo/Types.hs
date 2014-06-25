@@ -31,8 +31,10 @@ data Parameter = Parameter
     ,   _initialFitness :: Double
     }
 
-type MatchSet c a= [Rule c a]
-type ActionSet c a= [Rule c a]
+type RuleSet c a = [Rule c a]
+type MatchSet c a = RuleSet c a
+type ActionSet c a = RuleSet c a
+type Classifier c a = RuleSet c a -> [c] -> a
 
 data Rule c a = Rule
     {   _condition :: [c]
@@ -50,10 +52,10 @@ instance (Show c, Show a) => Show (Rule c a) where
         ++ " " ++ show fitness
         ++ " >"
 
-class (Eq c, Enum c, Variate c) => Condition c where
-class (Eq a, Enum a, Variate a ,Bounded a) => Action a where
+class (Eq c, Enum c, Show c, Variate c) => Condition c where
+class (Eq a, Enum a, Show a, Variate a ,Bounded a) => Action a where
 
-data Bit = Off | On | DontCare deriving Enum
+data Bit = On | Off | DontCare deriving Enum
 
 instance Eq Bit where
     On == Off = False
@@ -63,8 +65,8 @@ instance Eq Bit where
     DontCare == _ = True
 
 instance Show Bit where
-    show On = "0"
-    show Off = "1"
+    show On = "1"
+    show Off = "0"
     show DontCare = "#"
 
 instance Condition Bit
