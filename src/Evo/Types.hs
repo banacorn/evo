@@ -39,6 +39,7 @@ type RuleSet c a = [Rule c a]
 type MatchSet c a = RuleSet c a
 type ActionSet c a = RuleSet c a
 type Classifier c a = RuleSet c a -> [c] -> EvoM a
+type Model c a = [c] -> a
 
 data Rule c a = Rule
     {   _condition :: [c]
@@ -56,12 +57,12 @@ instance (Show c, Show a) => Show (Rule c a) where
         ++ " " ++ show fitness
         ++ " >"
 
-class (Eq c, Enum c, Show c, Variate c) => Condition c where
+class (Eq c, Enum c, Show c, Variate c, Bounded c) => Condition c where
     dontCare :: c
 
-class (Eq a, Enum a, Show a, Variate a ,Bounded a) => Action a where
+class (Eq a, Enum a, Show a, Variate a, Bounded a) => Action a where
 
-data Bit = On | Off | DontCare deriving Enum
+data Bit = DontCare | On | Off deriving (Enum, Bounded)
 
 instance Eq Bit where
     On == Off = False

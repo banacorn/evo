@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes #-}
 module Evo.XCS where
 
 import Evo.Types
@@ -7,7 +8,7 @@ import System.Random.MWC
 import Control.Monad
 import Control.Monad.State
 import Control.Monad.Reader
-import Debug.Trace
+--import Debug.Trace
 import Data.List (elemIndices)
 
 getGen :: EvoM GenIO
@@ -16,6 +17,12 @@ getGen = get >>= liftIO . restore
 putGen :: GenIO -> EvoM ()
 putGen gen = liftIO (save gen) >>= put
 
+generate :: forall b. (GenIO -> IO b) -> EvoM b
+generate f = do
+    gen <- getGen
+    x <- liftIO (f gen)
+    putGen gen
+    return x
 --uniform' :: Variate a => EvoM a
 --uniform' = do
 --    gen <- getGen
@@ -25,11 +32,15 @@ putGen gen = liftIO (save gen) >>= put
 genRule :: (Condition c, Action a) => EvoM (Rule c a)
 genRule = do
     p <- ask
-    gen <- getGen
-    cond <- liftIO $ replicateM (_chromosomeLength p) (uniform gen)
-    action <- liftIO $ uniform gen
-    putGen gen
+    cond <- generate $ \gen -> replicateM (_chromosomeLength p) (uniform gen)
+    action <- generate uniform
     return (Rule cond action (_initialPrediction p) (_initialError p) (_initialFitness p))
+
+genCondition :: Condition c => EvoM [c]
+genCondition = do
+    p <- ask
+    cond <- generate (\gen -> replicateM (_chromosomeLength p) (uniformR (succ minBound, maxBound) gen))
+    return cond
 
 dropNth :: Int -> [a] -> [a]
 dropNth i xs = take i xs ++ (tail $ drop i xs)
@@ -73,7 +84,7 @@ splitActionSet matchSet = (chosenAction, maximumPayoff, (chosen, concat (unchose
 -- | Update Action Set
 
 actionPayoff :: Parameter -> Double -> Double -> Double
-actionPayoff p predictPayoff reward = _discountFactor p * predictPayoff + reward
+actionPayoff p predictPayoff r = _discountFactor p * predictPayoff + r
 
 updateActionSet :: Parameter -> Double -> ActionSet c a -> ActionSet c a
 updateActionSet p payoff rules = map updateRule rules
@@ -111,13 +122,11 @@ rulePrediction p payoff rule = pr + b * (payoff - pr)
 
 deleteRule :: Int -> RuleSet c a -> EvoM (RuleSet c a)
 deleteRule n rules = do
-    gen <- getGen
-    indices <- liftIO $ replicateM n $ uniformR (0, length rules - 1) gen
+    indices <- generate $ \gen -> replicateM n $ uniformR (0, length rules - 1) gen
 
     let tagged = zip [0..] rules
     let rules' = map snd (foldl (filterPicked indices) [] tagged)
 
-    putGen gen
 
     return rules'
 
@@ -125,29 +134,32 @@ deleteRule n rules = do
 
 pickRule :: Int -> RuleSet c a -> EvoM (RuleSet c a)
 pickRule n rules = do
-    gen <- getGen
-    indices <- liftIO $ replicateM n $ uniformR (0, length rules - 1) gen
+    indices <- generate $ \gen -> replicateM n $ uniformR (0, length rules - 1) gen
 
     let rules' = foldl (\acc index -> rules !! index : acc) [] indices
 
-    putGen gen
 
     return rules'
 
---crossover :: ActionSet c a -> Evo (ActionSet c a)
---crossover rules = do
 
---    parameter <- ask
---    (papa, mama) <- pickRule 2 rules
+crossover :: ActionSet c a -> EvoM (ActionSet c a)
+crossover rules = do
 
---    cut <- liftIO $ uniformR (0, _chromosomeLength parameter - 1) :: EvoM Int
+    p <- ask
+    [papa, mama] <- pickRule 2 rules
 
---    let papaCond = _condition papa
---    let mamaCond = _condition mama
+    cut <- generate (uniformR (0, _chromosomeLength p - 1))
 
---    let offspring0 = Rule cond (_action (_initialPrediction p) (_initialError p) (_initialFitness p)
-    --rules' <- deleteRule 2 rules
+    let papaCond = _condition papa
+    let mamaCond = _condition mama
 
+    let cond0 = take cut papaCond ++ drop cut mamaCond
+    let cond1 = drop cut papaCond ++ take cut mamaCond
+
+    let offspring0 = Rule cond0 (_action papa) (_initialPrediction p) (_initialError p) (_initialFitness p)
+    let offspring1 = Rule cond1 (_action mama) (_initialPrediction p) (_initialError p) (_initialFitness p)
+    rules' <- deleteRule 2 rules
+    return (offspring0 : offspring1 : rules')
 
 
 --------------------------------------------------------------------------------
@@ -160,22 +172,16 @@ classify rules condition = do
             let (action, _, _) = splitActionSet matched
             return action
 
---reinforce :: (Condition c, Action a) => Classifier c a -> [c] -> (a -> Double) -> Classifier c a
---reinforce parameter rules condition 
-
 coverMatchSet :: (Condition c, Action a) => (MatchSet c a, RuleSet c a) -> EvoM (MatchSet c a, RuleSet c a)
 coverMatchSet ((x:xs), unmatched) = return ((x:xs), unmatched)
 coverMatchSet ([]    , unmatched) = do
 
         p <- ask
-        gen <- getGen
 
         -- randomly delete one rule from the rule set
         unmatched' <- deleteRule 1 unmatched
 
-        newAction <- liftIO $ uniform gen
-
-        putGen gen
+        newAction <- generate uniform 
 
         -- `#####:Action`
         let newRule = Rule (replicate (_chromosomeLength p) dontCare) newAction (_initialPrediction p) (_initialError p) (_initialFitness p)
@@ -194,38 +200,30 @@ reinforce rules condition evaluate = do
         let (action, predictedPayoff, (chosen, unchosen)) = splitActionSet matched
 
         -- evaluate action
-        let reward = evaluate action
+        let rwrd = evaluate action
 
         -- update
-        let payoff = actionPayoff parameter predictedPayoff reward
+        let payoff = actionPayoff parameter predictedPayoff rwrd
         let updated = updateActionSet parameter payoff chosen
 
 
         return $ unmatched ++ unchosen ++ updated
 
+reward :: Action a => Model c a -> [c] -> a -> Double
+reward model cond action = if model cond == action then 10 else 0
 
 --reinforce :: (Condition c, Action a) =>  RuleSet c a -> [c] -> (a -> Double) -> EvoM (RuleSet c a)
 --reinforce rules condition evaluate = do
 --    parameter <- ask
 --    return $ reinforcePure parameter rules condition evaluate 
 
-
-yyy :: [Bool] -> Bool -> Double
-yyy v b = if b == (length (filter id v) > length (filter not v)) then 10 else 0
-
-convert :: Bool -> Bit
-convert True = On
-convert False = Off
-
-xxx :: Int -> [Vanilla] -> EvoM [Vanilla]
-xxx 0 rules = return rules
-xxx n rules = do
-    gen <- getGen
-    boolV <- replicateM 10 (liftIO $ uniform gen) :: EvoM [Bool]
-    let bitV = map convert boolV
-    rules' <- reinforce rules bitV (yyy boolV)
-    putGen gen
-    xxx (n-1) rules'
+train :: (Condition c, Action a) => Int -> Model c a -> RuleSet c a -> EvoM (RuleSet c a)
+train 0 _ rules = return rules
+train n model rules = do
+    cond <- genCondition
+    liftIO $ print cond
+    rules' <- reinforce rules cond (reward model cond)
+    train (n-1) model rules'
 
 
 initPopulation :: (Condition c, Action a) => EvoM (RuleSet c a)
@@ -233,17 +231,29 @@ initPopulation = do
     p <- ask
     replicateM (_populationSize p) genRule
 
+evenMod :: [Bit] -> Bool
+evenMod [] = True
+evenMod cond = last cond == Off
+
+validate :: (Condition c, Action a) => Model c a -> RuleSet c a -> EvoM (a, a, [c])
+validate model rules = do
+    cond <- genCondition
+    answer <- classify rules cond
+    let truth = model cond
+    return (answer, truth, cond)
+
 runner :: EvoM ()
 runner = do
-    parameter <- ask
+    --parameter <- ask
     population <- initPopulation :: EvoM [Vanilla]
 
-    liftIO $ print population
-    population' <- xxx 1000 population
-    --liftIO $ print population'
+    --liftIO $ print population
+    population' <- train 100 evenMod population
+    liftIO $ print population'
 
-    classify population' [On, On, On, On, On, On, On, On, On, On] >>= liftIO . print
-
+    liftIO $ print "==========="
+    --classify population' [On, On, On, On, On, On, On, On, On, Off] >>= liftIO . print
+    --replicateM_ 10 (validate evenMod population' >>= liftIO . print)
     --liftIO $ do
     --    putStrLn "unmatched"
     --    print unmatched
@@ -266,7 +276,7 @@ runner = do
 
 defaultParameter :: Parameter
 defaultParameter = Parameter
-    {   _populationSize = 1000
+    {   _populationSize = 100
     ,   _learningRate = 0.2
     ,   _discountFactor = 0.7
     ,   _errorBound = 0.01
