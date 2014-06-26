@@ -163,13 +163,13 @@ crossover rules = do
 
 classify :: (Condition c, Action a) => Classifier c a
 classify rules condition = do
-            (matched, _) <- coverMatchSet $ splitMatchSet condition rules
+            (matched, _) <- coverMatchSet condition $ splitMatchSet condition rules
             let (action, _, _) = splitActionSet matched
             return action
 
-coverMatchSet :: (Condition c, Action a) => (MatchSet c a, RuleSet c a) -> EvoM (MatchSet c a, RuleSet c a)
-coverMatchSet ((x:xs), unmatched) = return ((x:xs), unmatched)
-coverMatchSet ([]    , unmatched) = do
+coverMatchSet :: (Condition c, Action a) => [c] -> (MatchSet c a, RuleSet c a) -> EvoM (MatchSet c a, RuleSet c a)
+coverMatchSet _ ((x:xs), unmatched) = return ((x:xs), unmatched)
+coverMatchSet cond ([]    , unmatched) = do
 
         p <- ask
 
@@ -178,8 +178,8 @@ coverMatchSet ([]    , unmatched) = do
 
         newAction <- generate uniform 
 
-        -- `#####:Action`
         let newRule = Rule (replicate (_chromosomeLength p) dontCare) newAction (_initialPrediction p) (_initialError p) (_initialFitness p)
+        --let newRule = Rule cond newAction (_initialPrediction p) (_initialError p) (_initialFitness p)
 
         return ([newRule], unmatched')
 
@@ -190,7 +190,7 @@ reinforce rules condition evaluate = do
         parameter <- ask
 
         -- get action
-        (matched, unmatched) <- coverMatchSet (splitMatchSet condition rules) -- >>= return . traceShowId
+        (matched, unmatched) <- coverMatchSet condition (splitMatchSet condition rules) -- >>= return . traceShowId
 
         let (action, predictedPayoff, (chosen, unchosen)) = splitActionSet matched
 
@@ -216,7 +216,6 @@ train :: (Condition c, Action a) => Int -> Model c a -> RuleSet c a -> EvoM (Rul
 train 0 _ rules = return rules
 train n model rules = do
     cond <- genCondition
-    liftIO $ print cond
     rules' <- reinforce rules cond (reward model cond)
     train (n-1) model rules'
 
@@ -237,16 +236,24 @@ validate model rules = do
     let truth = model cond
     return (answer, truth, cond)
 
+bonbon :: (Condition c, Action a) => Model c a -> RuleSet c a -> Int -> EvoM Double
+bonbon model rules n = do
+    results <- replicateM n (validate model rules)
+    let n' = length $ filter id $ map (\(a, t, _) -> a == t) results
+    return (fromIntegral n' / fromIntegral n)
+
+
 runner :: EvoM ()
 runner = do
     --parameter <- ask
     population <- initPopulation :: EvoM [Vanilla]
 
     --liftIO $ print population
-    population' <- train 1000 evenMod population
+    population' <- train 10000 evenMod population
     liftIO $ print population'
     liftIO $ print "==========="
-    replicateM_ 10 (validate evenMod population' >>= liftIO . print)
+    --replicateM_ 10 (validate evenMod population' >>= liftIO . print)
+    bonbon evenMod population' 1000 >>= liftIO . print
 
     --liftIO $ do
     --    putStrLn "unmatched"
