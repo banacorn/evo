@@ -23,11 +23,6 @@ generate f = do
     x <- liftIO (f gen)
     putGen gen
     return x
---uniform' :: Variate a => EvoM a
---uniform' = do
---    gen <- getGen
---    n <- liftIO $ uniform gen
-
 
 genRule :: (Condition c, Action a) => EvoM (Rule c a)
 genRule = do
@@ -248,12 +243,11 @@ runner = do
     population <- initPopulation :: EvoM [Vanilla]
 
     --liftIO $ print population
-    population' <- train 100 evenMod population
+    population' <- train 1000 evenMod population
     liftIO $ print population'
-
     liftIO $ print "==========="
-    --classify population' [On, On, On, On, On, On, On, On, On, Off] >>= liftIO . print
-    --replicateM_ 10 (validate evenMod population' >>= liftIO . print)
+    replicateM_ 10 (validate evenMod population' >>= liftIO . print)
+
     --liftIO $ do
     --    putStrLn "unmatched"
     --    print unmatched
