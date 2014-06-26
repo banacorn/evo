@@ -1,4 +1,4 @@
-module Evo where
+module Evo.XCS where
 
 import Evo.Types
 
@@ -9,10 +9,6 @@ import Control.Monad.State
 import Control.Monad.Reader
 import Debug.Trace
 import Data.List (elemIndices)
--- LCS
--- 1. find the matched set [M]
--- 2. group the matched set by actions [A]
--- 3. 
 
 getGen :: EvoM GenIO
 getGen = get >>= liftIO . restore
@@ -111,6 +107,50 @@ rulePrediction p payoff rule = pr + b * (payoff - pr)
 
 
 --------------------------------------------------------------------------------
+-- | GA
+
+deleteRule :: Int -> RuleSet c a -> EvoM (RuleSet c a)
+deleteRule n rules = do
+    gen <- getGen
+    indices <- liftIO $ replicateM n $ uniformR (0, length rules - 1) gen
+
+    let tagged = zip [0..] rules
+    let rules' = map snd (foldl (filterPicked indices) [] tagged)
+
+    putGen gen
+
+    return rules'
+
+    where   filterPicked indices acc (index, rule) = if index `elem` indices then acc else (index, rule):acc
+
+pickRule :: Int -> RuleSet c a -> EvoM (RuleSet c a)
+pickRule n rules = do
+    gen <- getGen
+    indices <- liftIO $ replicateM n $ uniformR (0, length rules - 1) gen
+
+    let rules' = foldl (\acc index -> rules !! index : acc) [] indices
+
+    putGen gen
+
+    return rules'
+
+--crossover :: ActionSet c a -> Evo (ActionSet c a)
+--crossover rules = do
+
+--    parameter <- ask
+--    (papa, mama) <- pickRule 2 rules
+
+--    cut <- liftIO $ uniformR (0, _chromosomeLength parameter - 1) :: EvoM Int
+
+--    let papaCond = _condition papa
+--    let mamaCond = _condition mama
+
+--    let offspring0 = Rule cond (_action (_initialPrediction p) (_initialError p) (_initialFitness p)
+    --rules' <- deleteRule 2 rules
+
+
+
+--------------------------------------------------------------------------------
 -- | Full reinforcement process
 
 
@@ -131,10 +171,11 @@ coverMatchSet ([]    , unmatched) = do
         gen <- getGen
 
         -- randomly delete one rule from the rule set
-        index <- liftIO $ uniformR (0, length unmatched - 1) gen
-        let unmatched' = dropNth index unmatched
+        unmatched' <- deleteRule 1 unmatched
 
         newAction <- liftIO $ uniform gen
+
+        putGen gen
 
         -- `#####:Action`
         let newRule = Rule (replicate (_chromosomeLength p) dontCare) newAction (_initialPrediction p) (_initialError p) (_initialFitness p)
@@ -162,8 +203,7 @@ reinforce rules condition evaluate = do
 
         return $ unmatched ++ unchosen ++ updated
 
-        where   fuck [] = error "fuck fuck fuck"
-                fuck x = x
+
 --reinforce :: (Condition c, Action a) =>  RuleSet c a -> [c] -> (a -> Double) -> EvoM (RuleSet c a)
 --reinforce rules condition evaluate = do
 --    parameter <- ask
@@ -187,6 +227,7 @@ xxx n rules = do
     putGen gen
     xxx (n-1) rules'
 
+
 initPopulation :: (Condition c, Action a) => EvoM (RuleSet c a)
 initPopulation = do
     p <- ask
@@ -199,7 +240,7 @@ runner = do
 
     liftIO $ print population
     population' <- xxx 1000 population
-    liftIO $ print population'
+    --liftIO $ print population'
 
     classify population' [On, On, On, On, On, On, On, On, On, On] >>= liftIO . print
 
@@ -235,10 +276,12 @@ defaultParameter = Parameter
     ,   _initialFitness = 10
 
     ,   _chromosomeLength = 10
+    ,   _crossoverProb = 0.8
+    ,   _mutationProb = 0.04
     }
 
-main :: IO ()
-main = do
+go :: IO ()
+go = do
 
     seed <- create >>= save
     runReaderT (evalStateT (runEvoM runner) seed) defaultParameter

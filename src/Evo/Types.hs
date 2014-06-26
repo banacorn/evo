@@ -31,6 +31,8 @@ data Parameter = Parameter
     ,   _initialFitness :: Double
 
     ,   _chromosomeLength :: Int
+    ,   _crossoverProb :: Double
+    ,   _mutationProb :: Double
     }
 
 type RuleSet c a = [Rule c a]
