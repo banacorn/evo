@@ -30,10 +30,13 @@ genRule :: (Condition c, Action a) => EvoM (Rule c a)
 genRule = do
     p <- ask
     gen <- getGen
-    cond <- liftIO $ replicateM 10 (uniform gen)
+    cond <- liftIO $ replicateM (_chromosomeLength p) (uniform gen)
     action <- liftIO $ uniform gen
     putGen gen
     return (Rule cond action (_initialPrediction p) (_initialError p) (_initialFitness p))
+
+dropNth :: Int -> [a] -> [a]
+dropNth i xs = take i xs ++ (tail $ drop i xs)
 
 --------------------------------------------------------------------------------
 -- | Extract Action Set
@@ -57,8 +60,9 @@ actionPredictedPayoff rules = sum (map weightedPayoff rules) / sumOfFitness
 
 -- | (action, predicted payoff, (chosen, unchosen))
 splitActionSet :: (Condition c, Action a) => MatchSet c a -> (a, Double, (ActionSet c a, RuleSet c a))
+splitActionSet [] = error "spliting empty action set"
 splitActionSet matchSet = (chosenAction, maximumPayoff, (chosen, concat (unchosenLeft ++ unchosenRight)))
-    where   actionSets = groupByAction matchSet
+    where   actionSets = filter (not . null) (groupByAction $ matchSet)
             predictionArray = map actionPredictedPayoff actionSets
             maximumPayoff = maximum predictionArray
             index = head $ elemIndices maximumPayoff predictionArray
@@ -111,33 +115,59 @@ rulePrediction p payoff rule = pr + b * (payoff - pr)
 
 
 classify :: (Condition c, Action a) => Classifier c a
-classify rules condition = action
-    where   (matched, _) = splitMatchSet condition rules
-            (action, _, _) = splitActionSet matched
+classify rules condition = do
+            (matched, _) <- coverMatchSet $ splitMatchSet condition rules
+            let (action, _, _) = splitActionSet matched
+            return action
 
 --reinforce :: (Condition c, Action a) => Classifier c a -> [c] -> (a -> Double) -> Classifier c a
 --reinforce parameter rules condition 
 
+coverMatchSet :: (Condition c, Action a) => (MatchSet c a, RuleSet c a) -> EvoM (MatchSet c a, RuleSet c a)
+coverMatchSet ((x:xs), unmatched) = return ((x:xs), unmatched)
+coverMatchSet ([]    , unmatched) = do
+
+        p <- ask
+        gen <- getGen
+
+        -- randomly delete one rule from the rule set
+        index <- liftIO $ uniformR (0, length unmatched - 1) gen
+        let unmatched' = dropNth index unmatched
+
+        newAction <- liftIO $ uniform gen
+
+        -- `#####:Action`
+        let newRule = Rule (replicate (_chromosomeLength p) dontCare) newAction (_initialPrediction p) (_initialError p) (_initialFitness p)
+
+        return ([newRule], unmatched')
+
 -- | input ruleset -> (action -> reward) -> updated ruleset
-reinforcePure :: (Condition c, Action a) => Parameter -> RuleSet c a -> [c] -> (a -> Double) -> RuleSet c a
-reinforcePure parameter rules condition evaluate = unmatched ++ unchosen ++ updated
-    where   -- get action
-            (matched, unmatched) = traceShowId $ splitMatchSet condition rules
-            --matched' = if null matched then 
-            (action, predictedPayoff, (chosen, unchosen)) = splitActionSet matched
-
-            -- evaluate action
-            reward = evaluate action
-
-            -- update
-            payoff = actionPayoff parameter predictedPayoff reward
-            updated = updateActionSet parameter payoff chosen
-
-
-reinforce :: (Condition c, Action a) =>  RuleSet c a -> [c] -> (a -> Double) -> EvoM (RuleSet c a)
+reinforce :: (Condition c, Action a) => RuleSet c a -> [c] -> (a -> Double) -> EvoM (RuleSet c a)
 reinforce rules condition evaluate = do
-    parameter <- ask
-    return $ reinforcePure parameter rules condition evaluate 
+
+        parameter <- ask
+
+        -- get action
+        (matched, unmatched) <- coverMatchSet (splitMatchSet condition rules) -- >>= return . traceShowId
+
+        let (action, predictedPayoff, (chosen, unchosen)) = splitActionSet matched
+
+        -- evaluate action
+        let reward = evaluate action
+
+        -- update
+        let payoff = actionPayoff parameter predictedPayoff reward
+        let updated = updateActionSet parameter payoff chosen
+
+
+        return $ unmatched ++ unchosen ++ updated
+
+        where   fuck [] = error "fuck fuck fuck"
+                fuck x = x
+--reinforce :: (Condition c, Action a) =>  RuleSet c a -> [c] -> (a -> Double) -> EvoM (RuleSet c a)
+--reinforce rules condition evaluate = do
+--    parameter <- ask
+--    return $ reinforcePure parameter rules condition evaluate 
 
 
 yyy :: [Bool] -> Bool -> Double
@@ -168,14 +198,10 @@ runner = do
     population <- initPopulation :: EvoM [Vanilla]
 
     liftIO $ print population
-
-    population' <- xxx 100 population
-
-    --let population' = reinforcePure parameter population [On] (\p -> if p then 10 else 0)
+    population' <- xxx 1000 population
     liftIO $ print population'
 
-    liftIO $ print $ classify population' [On]
-    liftIO $ print $ classify population' [Off]
+    classify population' [On, On, On, On, On, On, On, On, On, On] >>= liftIO . print
 
     --liftIO $ do
     --    putStrLn "unmatched"
@@ -199,7 +225,7 @@ runner = do
 
 defaultParameter :: Parameter
 defaultParameter = Parameter
-    {   _populationSize = 10
+    {   _populationSize = 1000
     ,   _learningRate = 0.2
     ,   _discountFactor = 0.7
     ,   _errorBound = 0.01
@@ -207,6 +233,8 @@ defaultParameter = Parameter
     ,   _initialPrediction = 10
     ,   _initialError = 0
     ,   _initialFitness = 10
+
+    ,   _chromosomeLength = 10
     }
 
 main :: IO ()

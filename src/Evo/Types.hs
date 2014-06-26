@@ -29,12 +29,14 @@ data Parameter = Parameter
     ,   _initialPrediction :: Double
     ,   _initialError :: Double
     ,   _initialFitness :: Double
+
+    ,   _chromosomeLength :: Int
     }
 
 type RuleSet c a = [Rule c a]
 type MatchSet c a = RuleSet c a
 type ActionSet c a = RuleSet c a
-type Classifier c a = RuleSet c a -> [c] -> a
+type Classifier c a = RuleSet c a -> [c] -> EvoM a
 
 data Rule c a = Rule
     {   _condition :: [c]
@@ -53,6 +55,8 @@ instance (Show c, Show a) => Show (Rule c a) where
         ++ " >"
 
 class (Eq c, Enum c, Show c, Variate c) => Condition c where
+    dontCare :: c
+
 class (Eq a, Enum a, Show a, Variate a ,Bounded a) => Action a where
 
 data Bit = On | Off | DontCare deriving Enum
@@ -69,7 +73,8 @@ instance Show Bit where
     show Off = "0"
     show DontCare = "#"
 
-instance Condition Bit
+instance Condition Bit where
+    dontCare = DontCare
 instance Action Bool
 
 instance Variate Bit where
