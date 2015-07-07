@@ -3,21 +3,36 @@
 module Evo.Type where
 
 import System.Random.MWC
+import Data.STRef
 import Control.Monad.ST
-import Control.Monad.State
+import Control.Monad.Reader
 
 type Genotype = [Bool]
 type Phenotype = Genotype
-type Evo s a = StateT Seed (ST s) a
+type Population = [Genotype]
+data Ref s = Ref
+    {   gen :: STRef s (GenST s)
+    }
+type Evo s a = ReaderT (Ref s) (ST s) a
 
 getGen :: Evo s (GenST s)
-getGen = get >>= lift . restore
+getGen = asks gen >>= lift . readSTRef
 
 putGen :: GenST s -> Evo s ()
-putGen gen = lift (save gen) >>= put
+putGen g = do
+    ref <- asks gen
+    lift $ writeSTRef ref g
+
+rand :: Variate a => Evo s a
+rand = getGen >>= lift . uniform
+
+randR :: Variate a => (a, a) -> Evo s a
+randR (a, b) = getGen >>= lift . uniformR (a, b)
 
 runEvo :: Seed -> (forall s. Evo s a) -> a
-runEvo seed f = runST $ evalStateT f seed
+runEvo seed f = runST $ do
+    genRef <- restore seed >>= newSTRef
+    runReaderT f (Ref genRef)
 
 
 -- import Control.Monad.Reader

@@ -6,13 +6,16 @@ import Evo.Type
 import Evo.GA
 
 import Control.Monad
+import System.Random.MWC
+import Data.Vector (singleton)
+
+seed :: Seed
+seed = toSeed (singleton 42)
 
 main :: IO ()
 main = print $ runEvo seed $ do
 
-    population <- populate 5 10
+    p0 <- populate 5 1
+    p1 <- populate 5 1
 
-    
-
-
-    return ()
+    return (p0, p1)
