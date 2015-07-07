@@ -1,27 +1,41 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE RankNTypes #-}
 
-module Evo.Types where
+module Evo.Type where
 
 import System.Random.MWC
-import Control.Monad.Reader
+import Control.Monad.ST
 import Control.Monad.State
-import Control.Monad.Base
-import Control.Applicative (Applicative)
-import Control.Monad.Trans.Control
 
-newtype EvoM a = EvoM { runEvoM :: StateT Seed (ReaderT Parameter IO) a }
-    deriving (Monad, Functor, Applicative, MonadIO, MonadState Seed, MonadReader Parameter, MonadBase IO)
+type Genotype = [Bool]
+type Phenotype = Genotype
+type Evo s a = StateT Seed (ST s) a
 
-instance (MonadBaseControl IO) EvoM where
-    newtype StM EvoM a = StMEvo { unStMCEvo :: StM (StateT Seed (ReaderT Parameter IO)) a }
-    liftBaseWith f = EvoM (liftBaseWith (\run -> f (liftM StMEvo . run . runEvoM)))
-    restoreM = EvoM . restoreM . unStMCEvo
+getGen :: Evo s (GenST s)
+getGen = get >>= lift . restore
+
+putGen :: GenST s -> Evo s ()
+putGen gen = lift (save gen) >>= put
+
+runEvo :: Seed -> (forall s. Evo s a) -> a
+runEvo seed f = runST $ evalStateT f seed
+
+
+-- import Control.Monad.Reader
+-- import Control.Monad.State
+-- import Control.Monad.Base
+-- import Control.Applicative (Applicative)
+-- import Control.Monad.Trans.Control
+
+-- newtype EvoM a = EvoM { runEvoM :: StateT Seed (ReaderT Parameter IO) a }
+--     deriving (Monad, Functor, Applicative, MonadIO, MonadState Seed, MonadReader Parameter, MonadBase IO)
+
+-- instance (MonadBaseControl IO) EvoM where
+--     newtype StM EvoM a = StMEvo { unStMCEvo :: StM (StateT Seed (ReaderT Parameter IO)) a }
+--     liftBaseWith f = EvoM (liftBaseWith (\run -> f (liftM StMEvo . run . runEvoM)))
+--     restoreM = EvoM . restoreM . unStMCEvo
 
 --data Parameter = Parameter
---    {   _populationSize :: Int 
+--    {   _populationSize :: Int
 --    ,   _learningRate :: Double
 --    ,   _discountFactor :: Double
 --    ,   _errorBound :: Double
@@ -50,9 +64,9 @@ instance (MonadBaseControl IO) EvoM where
 --    }
 
 --instance (Show c, Show a) => Show (Rule c a) where
---    show (Rule cond action prediction err fitness) = "< " ++ concat (map show cond) 
---        ++ " : " ++ show action 
---        ++ " = " ++ show prediction 
+--    show (Rule cond action prediction err fitness) = "< " ++ concat (map show cond)
+--        ++ " : " ++ show action
+--        ++ " = " ++ show prediction
 --        ++ " " ++ show err
 --        ++ " " ++ show fitness
 --        ++ " >"
